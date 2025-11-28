@@ -13,7 +13,7 @@ categories = ["mathematics", "virtualization", "os"]
 members = [
     "crates/symmetrix-sheaf",
     "crates/symmetrix-galois",
-    "crates/symmetrix-tensor", "symmetrix-qwen3-poc",
+    "crates/symmetrix-tensor",
 ]
 
 [dependencies]
