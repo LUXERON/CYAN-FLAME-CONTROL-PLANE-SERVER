@@ -4,13 +4,15 @@
 //! Receives VXLAN commands and orchestrates QAGML/QANBAN/UAO-QTCAM.
 //!
 //! ## Architecture
-//! - UDP Server on port 4789 (VXLAN standard)
-//! - HTTP Management API on port 8080
+//! - UDP Server on port 4789 (VXLAN standard - local/Azure)
+//! - WebSocket Server on /ws (for Render deployment)
+//! - HTTP Management API on port 8080/10000
 //! - UAO-QTCAM Cache (Redis replacement)
 //! - All SYMMETRIX CORE integrations
 //!
 //! ## Deployment
 //! Deploy to Render with render.yaml configuration
+//! WebSocket endpoint: wss://vxlan-control-plane.onrender.com/ws
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,6 +20,8 @@ use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 use tracing::{info, error, warn, debug};
 use serde::{Deserialize, Serialize};
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message;
 
 // Import SYMMETRIX CORE components
 use symmetrix_core::{
@@ -235,8 +239,13 @@ impl ControlPlaneServer {
               (self.config.cache_size as f64 * 250.0) as usize / (1024 * 1024 * 1024));
         info!("");
         info!("  🔗 ENDPOINTS:");
-        info!("     • VXLAN UDP: udp://{}:{}", self.config.vxlan_bind, self.config.vxlan_port);
-        info!("     • HTTP API:  http://{}:{}", self.config.http_bind, self.config.http_port);
+        info!("     • VXLAN UDP:   udp://{}:{}", self.config.vxlan_bind, self.config.vxlan_port);
+        info!("     • HTTP API:    http://{}:{}", self.config.http_bind, self.config.http_port);
+        info!("     • WebSocket:   ws://{}:{}/ws (VXLAN over WebSocket)", self.config.http_bind, self.config.http_port);
+        info!("");
+        info!("  🌐 RENDER DEPLOYMENT:");
+        info!("     • WebSocket:   wss://vxlan-control-plane.onrender.com/ws");
+        info!("     • HTTP:        https://vxlan-control-plane.onrender.com");
         info!("");
         info!("═══════════════════════════════════════════════════════════════════════════════");
 
@@ -331,7 +340,7 @@ impl ControlPlaneServer {
         Ok(())
     }
 
-    /// Run HTTP management server
+    /// Run HTTP management server with WebSocket support
     async fn run_http_server(addr: SocketAddr, server: Arc<ServerInternals>) -> SymmetrixResult<()> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;
@@ -340,29 +349,41 @@ impl ControlPlaneServer {
             .map_err(|e| symmetrix_core::SymmetrixError::RuntimeError(format!("Failed to bind HTTP socket: {}", e)))?;
 
         info!("🌐 HTTP server listening on {}", addr);
+        info!("🔌 WebSocket endpoint: ws://{}/ws", addr);
 
         loop {
             match listener.accept().await {
-                Ok((mut socket, peer)) => {
+                Ok((socket, peer)) => {
                     let server_clone = server.clone();
 
                     tokio::spawn(async move {
+                        // Peek at the request to determine if it's a WebSocket upgrade
                         let mut buf = vec![0u8; 8192];
+                        let mut socket = socket;
 
-                        if let Ok(n) = socket.read(&mut buf).await {
+                        if let Ok(n) = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await {
                             let request = String::from_utf8_lossy(&buf[..n]);
-                            let response = Self::handle_http_request(&request, server_clone).await;
 
-                            let http_response = format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
-                                response.len(),
-                                response
-                            );
+                            // Check if this is a WebSocket upgrade request
+                            if Self::is_websocket_upgrade(&request) {
+                                info!("🔌 WebSocket upgrade request from {}", peer);
+                                if let Err(e) = Self::handle_websocket(socket, &request, peer, server_clone).await {
+                                    warn!("WebSocket error from {}: {}", peer, e);
+                                }
+                            } else {
+                                // Regular HTTP request
+                                let response = Self::handle_http_request(&request, server_clone).await;
 
-                            let _ = socket.write_all(http_response.as_bytes()).await;
+                                let http_response = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                                    response.len(),
+                                    response
+                                );
+
+                                let _ = tokio::io::AsyncWriteExt::write_all(&mut socket, http_response.as_bytes()).await;
+                                debug!("HTTP request from {} handled", peer);
+                            }
                         }
-
-                        debug!("HTTP request from {} handled", peer);
                     });
                 }
                 Err(e) => {
@@ -370,6 +391,129 @@ impl ControlPlaneServer {
                 }
             }
         }
+    }
+
+    /// Check if request is a WebSocket upgrade
+    fn is_websocket_upgrade(request: &str) -> bool {
+        let lower = request.to_lowercase();
+        lower.contains("upgrade: websocket") && lower.contains("connection: upgrade")
+    }
+
+    /// Handle WebSocket connection for VXLAN tunnel emulation
+    async fn handle_websocket(
+        socket: tokio::net::TcpStream,
+        request: &str,
+        peer: SocketAddr,
+        server: Arc<ServerInternals>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use sha1::{Sha1, Digest};
+        use base64::Engine;
+
+        // Extract Sec-WebSocket-Key
+        let ws_key = request.lines()
+            .find(|line| line.to_lowercase().starts_with("sec-websocket-key:"))
+            .and_then(|line| line.split(':').nth(1))
+            .map(|s| s.trim())
+            .ok_or("Missing Sec-WebSocket-Key")?;
+
+        // Generate accept key
+        let magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        let combined = format!("{}{}", ws_key, magic);
+        let mut hasher = Sha1::new();
+        hasher.update(combined.as_bytes());
+        let hash = hasher.finalize();
+        let accept_key = base64::engine::general_purpose::STANDARD.encode(hash);
+
+        // Send WebSocket handshake response
+        let response = format!(
+            "HTTP/1.1 101 Switching Protocols\r\n\
+             Upgrade: websocket\r\n\
+             Connection: Upgrade\r\n\
+             Sec-WebSocket-Accept: {}\r\n\r\n",
+            accept_key
+        );
+
+        let mut socket = socket;
+        tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await?;
+
+        info!("✅ WebSocket connection established with {}", peer);
+
+        // Use tokio-tungstenite for WebSocket framing
+        let ws_stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
+            socket,
+            tokio_tungstenite::tungstenite::protocol::Role::Server,
+            None,
+        ).await;
+
+        let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+        // Send welcome message
+        let welcome = serde_json::json!({
+            "type": "welcome",
+            "message": "SYMMETRIX Control Plane - WebSocket Connected",
+            "version": symmetrix_core::VERSION,
+            "capabilities": ["qagml", "qanban", "uao-qtcam", "cache", "cascade"]
+        });
+        ws_sender.send(Message::Text(serde_json::to_string(&welcome)?)).await?;
+
+        // Track connection in stats
+        {
+            let mut stats = server.stats.write().await;
+            stats.http_requests += 1;
+        }
+
+        // Process incoming messages
+        while let Some(msg) = ws_receiver.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    debug!("WebSocket message from {}: {}", peer, text);
+
+                    // Parse command
+                    match serde_json::from_str::<ControlCommand>(&text) {
+                        Ok(command) => {
+                            let response = Self::process_command(command, server.clone()).await;
+                            let response_json = serde_json::to_string(&response)?;
+                            ws_sender.send(Message::Text(response_json)).await?;
+                        }
+                        Err(e) => {
+                            let error_response = ControlResponse {
+                                success: false,
+                                message: format!("Invalid command: {}", e),
+                                data: None,
+                                latency_ns: 0,
+                            };
+                            ws_sender.send(Message::Text(serde_json::to_string(&error_response)?)).await?;
+                        }
+                    }
+                }
+                Ok(Message::Binary(data)) => {
+                    // Handle binary VXLAN-like packets
+                    if data.len() > 8 {
+                        let payload = &data[8..]; // Skip VXLAN header
+                        if let Ok(command) = serde_json::from_slice::<ControlCommand>(payload) {
+                            let response = Self::process_command(command, server.clone()).await;
+                            let response_json = serde_json::to_vec(&response)?;
+                            ws_sender.send(Message::Binary(response_json)).await?;
+                        }
+                    }
+                }
+                Ok(Message::Ping(data)) => {
+                    ws_sender.send(Message::Pong(data)).await?;
+                }
+                Ok(Message::Close(_)) => {
+                    info!("WebSocket connection closed by {}", peer);
+                    break;
+                }
+                Err(e) => {
+                    warn!("WebSocket error from {}: {}", peer, e);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        info!("WebSocket connection ended with {}", peer);
+        Ok(())
     }
 
     /// Handle HTTP request
@@ -384,6 +528,27 @@ impl ControlPlaneServer {
         let path = request.lines().next()
             .and_then(|line| line.split_whitespace().nth(1))
             .unwrap_or("/");
+
+        // Handle special WebSocket info endpoint
+        if path == "/ws" || path == "/websocket" {
+            return serde_json::to_string_pretty(&serde_json::json!({
+                "success": true,
+                "message": "WebSocket endpoint - use WebSocket protocol to connect",
+                "data": {
+                    "endpoint": "/ws",
+                    "protocol": "wss",
+                    "url": "wss://vxlan-control-plane.onrender.com/ws",
+                    "usage": "Connect with WebSocket client, send JSON commands",
+                    "example_command": {"cmd": "Health"},
+                    "supported_commands": [
+                        "Health", "Stats", "GetCascadeStats", "GetMemoryStats",
+                        "GetBandwidthStats", "CacheStats", "CacheGet", "CacheSet",
+                        "CacheDelete", "CacheIncr", "AllocateMemory", "FreeMemory",
+                        "OptimizeBandwidth", "Lookup", "InsertRoute", "DeleteRoute"
+                    ]
+                }
+            })).unwrap_or_else(|_| "{}".to_string());
+        }
 
         let command = match path {
             "/" | "/health" => ControlCommand::Health,
