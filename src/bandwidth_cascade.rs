@@ -405,3 +405,10 @@ mod tests {
     }
 }
 
+// ============================================================================
+// TYPE ALIAS FOR CONTROL PLANE SERVER COMPATIBILITY
+// ============================================================================
+
+/// BandwidthCascade is an alias for UnifiedRecursiveCascade
+/// Used by the Control Plane Server for simplified API
+pub type BandwidthCascade = UnifiedRecursiveCascade;

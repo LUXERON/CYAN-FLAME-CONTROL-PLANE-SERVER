@@ -269,3 +269,45 @@ mod tests {
         assert_eq!(EFFECTIVE_MEMORY_PB, 800_000);
     }
 }
+
+// ============================================================================
+// TYPE ALIASES FOR CONTROL PLANE SERVER COMPATIBILITY
+// ============================================================================
+
+/// Virtual memory allocation result
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct VirtualMemoryAllocationResult {
+    pub virtual_address: u64,
+    pub size: usize,
+    pub region_type: String,
+}
+
+/// QagmlIntegration is an alias for SymmetrixQagmlOptimizer
+pub type QagmlIntegration = SymmetrixQagmlOptimizer;
+
+/// QagmlConfigAlias is an alias for SymmetrixQagmlConfig
+pub type QagmlConfigAlias = SymmetrixQagmlConfig;
+
+impl SymmetrixQagmlOptimizer {
+    /// Allocate amplified memory region
+    pub fn allocate_amplified_region(&mut self, size_bytes: u64, region: &str)
+        -> Result<VirtualMemoryAllocationResult, String> {
+        let address = self.allocate_virtual_memory(size_bytes as usize)?;
+        Ok(VirtualMemoryAllocationResult {
+            virtual_address: address,
+            size: size_bytes as usize,
+            region_type: region.to_string(),
+        })
+    }
+
+    /// Free amplified memory region
+    pub fn free_amplified_region(&mut self, _allocation_id: &str) -> Result<(), String> {
+        // Memory is managed by QAGML engine automatically
+        Ok(())
+    }
+
+    /// Get integration stats (alias for get_metrics)
+    pub fn get_stats(&self) -> QagmlMetrics {
+        self.get_metrics()
+    }
+}

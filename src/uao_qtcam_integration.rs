@@ -461,3 +461,91 @@ mod tests {
         assert_eq!(lookup.next_hop, "gateway1");
     }
 }
+
+// ============================================================================
+// TYPE ALIASES FOR CONTROL PLANE SERVER COMPATIBILITY
+// ============================================================================
+
+/// UaoQtcamIntegration is an alias for SymmetrixUaoQtcamOptimizer
+pub type UaoQtcamIntegration = SymmetrixUaoQtcamOptimizer;
+
+/// UaoQtcamConfigAlias is an alias for SymmetrixUaoQtcamConfig
+pub type UaoQtcamConfigAlias = SymmetrixUaoQtcamConfig;
+
+/// Control plane lookup result (wrapper around the internal type)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ControlPlaneLookupResult {
+    pub key: String,
+    pub next_hop: String,
+    pub latency_ns: u64,
+    pub phase: String,
+}
+
+impl SymmetrixUaoQtcamOptimizer {
+    /// Synchronous lookup for control plane (convenience wrapper)
+    pub fn sync_lookup(&self, key: &str) -> Result<Option<ControlPlaneLookupResult>, String> {
+        // Use tokio runtime for async operation
+        let rt = tokio::runtime::Handle::try_current()
+            .map_err(|_| "No tokio runtime".to_string())?;
+
+        let tcam = self.tcam_engine.clone();
+        let key_owned = key.to_string();
+
+        rt.block_on(async {
+            let engine = tcam.read().await;
+            let start = std::time::Instant::now();
+
+            match engine.lookup(&key_owned).await {
+                Ok(Some(result)) => Ok(Some(ControlPlaneLookupResult {
+                    key: key_owned,
+                    next_hop: result.next_hop,
+                    latency_ns: start.elapsed().as_nanos() as u64,
+                    phase: result.phase,
+                })),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        })
+    }
+
+    /// Synchronous route insert for control plane (convenience wrapper)
+    pub fn sync_insert_route(&mut self, key: &str, value: &str, priority: u32) -> Result<(), String> {
+        let rt = tokio::runtime::Handle::try_current()
+            .map_err(|_| "No tokio runtime".to_string())?;
+
+        let tcam = self.tcam_engine.clone();
+        let key_owned = key.to_string();
+        let value_owned = value.to_string();
+
+        rt.block_on(async {
+            let engine = tcam.read().await;
+            let route = Route {
+                prefix: Prefix {
+                    addr: key_owned.parse().unwrap_or(0),
+                    len: 24,
+                },
+                next_hop: value_owned,
+                metric: priority,
+            };
+            engine.insert(route).await.map_err(|e| e.to_string())
+        })
+    }
+
+    /// Synchronous route delete for control plane (convenience wrapper)
+    pub fn sync_delete_route(&mut self, key: &str) -> Result<(), String> {
+        let rt = tokio::runtime::Handle::try_current()
+            .map_err(|_| "No tokio runtime".to_string())?;
+
+        let tcam = self.tcam_engine.clone();
+        let key_owned = key.to_string();
+
+        rt.block_on(async {
+            let engine = tcam.read().await;
+            let prefix = Prefix {
+                addr: key_owned.parse().unwrap_or(0),
+                len: 24,
+            };
+            engine.delete(prefix).await.map_err(|e| e.to_string())
+        })
+    }
+}

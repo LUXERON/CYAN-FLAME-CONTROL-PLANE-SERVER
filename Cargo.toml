@@ -112,6 +112,10 @@ path = "src/bin/symmetrix_fabric.rs"
 name = "symmetrix-cascade-benchmark"
 path = "src/bin/cascade_benchmark.rs"
 
+[[bin]]
+name = "symmetrix-control-plane"
+path = "src/bin/control_plane_server.rs"
+
 [features]
 default = ["sheaf-scheduler", "galois-acceleration", "tensor-folding", "qanban-integration", "qagml-integration", "uao-qtcam-integration"]
 sheaf-scheduler = []
