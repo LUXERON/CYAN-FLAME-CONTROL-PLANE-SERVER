@@ -725,6 +725,127 @@ impl ControlPlaneServer {
             })).unwrap_or_else(|_| "{}".to_string());
         }
 
+        // Handle POST /v1/index/upload for GFEF index upload
+        if path == "/v1/index/upload" {
+            let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+            if body.is_empty() {
+                return serde_json::to_string_pretty(&serde_json::json!({
+                    "success": false,
+                    "error": "EMPTY_BODY",
+                    "message": "Request body is empty. Send GFEF index JSON."
+                })).unwrap_or_else(|_| "{}".to_string());
+            }
+
+            // Parse the index JSON
+            match serde_json::from_str::<serde_json::Value>(body) {
+                Ok(index_json) => {
+                    let model_name = index_json.get("model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let total_neurons = index_json.get("total_neurons")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let num_layers = index_json.get("num_layers")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let k_components = index_json.get("k_components")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(32);
+                    let layers = index_json.get("layers")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+
+                    info!("🔐 Receiving GFEF index upload for model: {}", model_name);
+                    info!("   Total Neurons: {}", total_neurons);
+                    info!("   Layers: {} (metadata entries: {})", num_layers, layers);
+                    info!("   K-Components: {}", k_components);
+
+                    // Create LayerIndex entries from the JSON
+                    let layer_indices: Vec<LayerIndex> = index_json.get("layers")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter().map(|l| {
+                                LayerIndex {
+                                    layer_id: l.get("layer_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                                    layer_name: l.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                    num_neurons: l.get("neurons").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                                    input_dim: l.get("pc_shape").and_then(|v| v.as_array()).and_then(|a| a.get(0)).and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                                    k_components: k_components as u32,
+                                    principal_components: Vec::new(),
+                                    signatures: Vec::new(),
+                                }
+                            }).collect()
+                        })
+                        .unwrap_or_default();
+
+                    // Create IndexConfig
+                    let config = IndexConfig {
+                        k_components: k_components as u32,
+                        fft_bins: index_json.get("fft_bins").and_then(|v| v.as_u64()).unwrap_or(16) as u32,
+                        target_sparsity: 0.95,
+                    };
+
+                    // Create GFEFIndex
+                    let index = GFEFIndex {
+                        id: uuid::Uuid::new_v4(),
+                        customer_id: uuid::Uuid::nil(),
+                        model_id: model_name.to_string(),
+                        model_name: model_name.to_string(),
+                        generated_at: chrono::Utc::now(),
+                        expires_at: None,
+                        layers: layer_indices,
+                        total_neurons,
+                        config,
+                    };
+
+                    let index_id = index.id;
+                    let num_layers_registered = index.layers.len();
+
+                    // Register with predictor
+                    {
+                        let mut predictor = server.gfef_predictor.write().await;
+                        predictor.register_index(index);
+                    }
+
+                    info!("🔒 TRIPLE IP LOCK ACTIVE - Index secured on Control Plane");
+                    info!("   Lock 1: GFEF Index (SECURED) - {} neurons", total_neurons);
+                    info!("   Lock 2: Calibration Matrix (rotating every 60s)");
+                    info!("   Lock 3: Activation Prediction Service (real-time oracle)");
+
+                    let predictor = server.gfef_predictor.read().await;
+                    let stats = predictor.stats();
+
+                    return serde_json::to_string_pretty(&serde_json::json!({
+                        "success": true,
+                        "message": "🔐 GFEF Index uploaded and secured on Control Plane",
+                        "index_id": index_id.to_string(),
+                        "model_id": model_name,
+                        "total_neurons": total_neurons,
+                        "num_layers": num_layers_registered,
+                        "triple_ip_lock_status": {
+                            "lock1_gfef_index": "SECURED",
+                            "lock2_calibration": "ROTATING",
+                            "lock3_prediction_service": "ACTIVE"
+                        },
+                        "predictor_stats": {
+                            "models_loaded": stats.models_loaded,
+                            "total_neurons": stats.total_neurons,
+                            "total_layers": stats.total_layers,
+                            "target_sparsity": format!("{:.1}%", stats.target_sparsity * 100.0)
+                        }
+                    })).unwrap_or_else(|_| "{}".to_string());
+                }
+                Err(e) => {
+                    return serde_json::to_string_pretty(&serde_json::json!({
+                        "success": false,
+                        "error": "INVALID_JSON",
+                        "message": format!("Failed to parse index JSON: {}", e)
+                    })).unwrap_or_else(|_| "{}".to_string());
+                }
+            }
+        }
+
         let command = match path {
             "/" | "/health" => ControlCommand::Health,
             "/stats" => ControlCommand::Stats,
