@@ -146,6 +146,36 @@ pub use uao_qtcam_cache::{
     CacheStats,
 };
 
+// ============================================================================
+// GFEF CONTROL PLANE MODULES (Triple IP Lock™ Architecture)
+// ============================================================================
+// GFEF (Galois Field Eigenmode Folding) enables 19.6× weight reduction
+// Combined with UAO-QTCAM: 19.6× × 1,250× = 24,500× total compression
+//
+// Triple IP Lock™:
+// 1. GFEF Index (spectral signatures) - owned by Control Plane
+// 2. Calibration Matrix (UAO-QTCAM secret) - rotates every 60 seconds
+// 3. Activation Prediction Service (real-time oracle)
+
+pub mod gfef;
+
+pub use gfef::{
+    create_gfef_router,
+    GFEFAppState,
+    CalibrationService,
+    CalibrationMatrix,
+    GFEFIndexGenerator,
+    IndexConfig,
+    IndexMetadata,
+    ActivationPredictor,
+    PredictionRequest,
+    PredictionResponse,
+    IndexStorage,
+    SubscriptionManager,
+    SubscriptionTier,
+    Subscription,
+};
+
 // Re-export core types and traits
 pub use sheaf::{SheafSpace, ResourceStalk};
 pub use galois::{GaloisElement, CRTDecomposition};
