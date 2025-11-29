@@ -1,10 +1,12 @@
 //! Control Plane HTTP API
-//! 
+//!
 //! Endpoints:
-//! - POST /v1/index/generate - Generate GFEF index from weights
 //! - POST /v1/predict - Get activation predictions
 //! - GET /v1/calibration - Get current calibration matrix
 //! - GET /v1/subscription/{customer_id} - Get subscription status
+//! - POST /v1/extract - Trigger GFEF extraction for a model
+//! - GET /v1/extract/{job_id} - Get extraction job status
+//! - GET /v1/indices - List all GFEF indices
 
 use axum::{
     extract::{Path, State, Json},
@@ -15,13 +17,16 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::path::PathBuf;
+use tokio::sync::{RwLock, mpsc};
+use std::collections::HashMap;
 
 use super::prediction::{ActivationPredictor, PredictionRequest, PredictionResponse, PredictionError};
 use super::calibration::{CalibrationService, CalibrationMatrix};
 use super::subscription::{SubscriptionManager, SubscriptionTier, Subscription};
 use super::index::{GFEFIndexGenerator, IndexConfig, IndexMetadata};
 use super::storage::IndexStorage;
+use super::extraction::{ExtractionService, ExtractionConfig, ExtractionResult};
 
 /// Shared application state
 pub struct AppState {
@@ -30,6 +35,9 @@ pub struct AppState {
     pub subscriptions: RwLock<SubscriptionManager>,
     pub index_generator: RwLock<GFEFIndexGenerator>,
     pub storage: RwLock<IndexStorage>,
+    pub extraction_service: Option<ExtractionService>,
+    pub extraction_jobs: RwLock<HashMap<Uuid, ExtractionResult>>,
+    pub extraction_result_rx: Option<RwLock<mpsc::Receiver<ExtractionResult>>>,
 }
 
 impl AppState {
@@ -40,7 +48,17 @@ impl AppState {
             subscriptions: RwLock::new(SubscriptionManager::new()),
             index_generator: RwLock::new(GFEFIndexGenerator::new(IndexConfig::default())),
             storage: RwLock::new(IndexStorage::new(std::path::PathBuf::from("./indices"))),
+            extraction_service: None,
+            extraction_jobs: RwLock::new(HashMap::new()),
+            extraction_result_rx: None,
         }
+    }
+
+    pub fn with_extraction(mut self, config: ExtractionConfig) -> Self {
+        let (tx, rx) = mpsc::channel(100);
+        self.extraction_service = Some(ExtractionService::new(config, tx));
+        self.extraction_result_rx = Some(RwLock::new(rx));
+        self
     }
 }
 
@@ -53,6 +71,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/v1/subscription/:customer_id", get(get_subscription))
         .route("/v1/subscription", post(create_subscription))
         .route("/v1/indices", get(list_indices))
+        // GFEF Extraction endpoints
+        .route("/v1/extract", post(trigger_extraction))
+        .route("/v1/extract/:job_id", get(get_extraction_status))
         .with_state(state)
 }
 
@@ -136,6 +157,64 @@ async fn list_indices(
     Json(storage.list_metadata())
 }
 
+/// Trigger GFEF extraction for a model
+async fn trigger_extraction(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<ExtractRequest>,
+) -> Result<Json<ExtractResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let extraction_service = state.extraction_service.as_ref()
+        .ok_or((StatusCode::SERVICE_UNAVAILABLE, Json(ErrorResponse {
+            error: "Extraction service not configured".to_string()
+        })))?;
+
+    let model_path = PathBuf::from(&request.model_path);
+    if !model_path.exists() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse {
+            error: format!("Model not found: {}", request.model_path)
+        })));
+    }
+
+    // Start extraction (async)
+    let result = extraction_service.extract_model(&model_path, &request.customer_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse {
+            error: e.to_string()
+        })))?;
+
+    // Store result
+    let mut jobs = state.extraction_jobs.write().await;
+    jobs.insert(result.job_id, result.clone());
+
+    Ok(Json(ExtractResponse {
+        job_id: result.job_id,
+        status: if result.success { "completed" } else { "failed" }.to_string(),
+        model_path: request.model_path,
+        index_path: result.index_path.to_string_lossy().to_string(),
+        stats: result.stats,
+        error: result.error_message,
+    }))
+}
+
+/// Get extraction job status
+async fn get_extraction_status(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<ExtractResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let jobs = state.extraction_jobs.read().await;
+    let result = jobs.get(&job_id)
+        .ok_or((StatusCode::NOT_FOUND, Json(ErrorResponse {
+            error: "Extraction job not found".to_string()
+        })))?;
+
+    Ok(Json(ExtractResponse {
+        job_id: result.job_id,
+        status: if result.success { "completed" } else { "failed" }.to_string(),
+        model_path: result.model_path.to_string_lossy().to_string(),
+        index_path: result.index_path.to_string_lossy().to_string(),
+        stats: result.stats.clone(),
+        error: result.error_message.clone(),
+    }))
+}
+
 // === Request/Response types ===
 
 #[derive(Serialize)]
@@ -162,4 +241,20 @@ struct CalibrationResponse {
 struct CreateSubscriptionRequest {
     customer_id: Uuid,
     tier: SubscriptionTier,
+}
+
+#[derive(Deserialize)]
+struct ExtractRequest {
+    customer_id: Uuid,
+    model_path: String,
+}
+
+#[derive(Serialize)]
+struct ExtractResponse {
+    job_id: Uuid,
+    status: String,
+    model_path: String,
+    index_path: String,
+    stats: Option<super::extraction::ExtractionStats>,
+    error: Option<String>,
 }
