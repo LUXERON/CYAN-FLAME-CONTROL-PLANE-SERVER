@@ -10,9 +10,9 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-use crate::gfef_index::{GFEFIndex, LayerIndex};
-use crate::calibration::CalibrationMatrix;
-use crate::subscription::{SubscriptionTier, Subscription};
+use super::index::{GFEFIndex, LayerIndex};
+use super::calibration::CalibrationMatrix;
+use super::subscription::{SubscriptionTier, Subscription};
 
 /// Request for activation prediction
 #[derive(Debug, Clone, Serialize, Deserialize)]

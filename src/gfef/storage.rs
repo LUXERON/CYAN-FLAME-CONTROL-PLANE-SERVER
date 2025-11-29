@@ -8,7 +8,7 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::gfef_index::{GFEFIndex, IndexMetadata};
+use super::index::{GFEFIndex, IndexMetadata};
 
 /// Storage backend for GFEF indices
 pub struct IndexStorage {
