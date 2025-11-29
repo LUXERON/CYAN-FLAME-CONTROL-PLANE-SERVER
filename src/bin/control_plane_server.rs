@@ -452,11 +452,41 @@ impl ControlPlaneServer {
 
                     tokio::spawn(async move {
                         // Peek at the request to determine if it's a WebSocket upgrade
-                        let mut buf = vec![0u8; 8192];
+                        // Use larger buffer for GFEF index uploads (can be 100KB+)
+                        let mut buf = vec![0u8; 256 * 1024]; // 256KB buffer
                         let mut socket = socket;
+                        let mut total_read = 0;
 
-                        if let Ok(n) = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await {
-                            let request = String::from_utf8_lossy(&buf[..n]);
+                        // Read all available data (may come in chunks)
+                        loop {
+                            match tokio::io::AsyncReadExt::read(&mut socket, &mut buf[total_read..]).await {
+                                Ok(0) => break, // EOF
+                                Ok(n) => {
+                                    total_read += n;
+                                    // Check if we've received the full request
+                                    // Look for Content-Length header and verify we have all data
+                                    let partial = String::from_utf8_lossy(&buf[..total_read]);
+                                    if let Some(content_length) = Self::extract_content_length(&partial) {
+                                        if let Some(body_start) = partial.find("\r\n\r\n") {
+                                            let body_len = total_read - body_start - 4;
+                                            if body_len >= content_length {
+                                                break; // We have the full request
+                                            }
+                                        }
+                                    } else if partial.contains("\r\n\r\n") && !partial.contains("Content-Length") {
+                                        break; // No body expected
+                                    }
+                                    // Continue reading if buffer not full
+                                    if total_read >= buf.len() {
+                                        break;
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+
+                        if total_read > 0 {
+                            let request = String::from_utf8_lossy(&buf[..total_read]);
 
                             // Check if this is a WebSocket upgrade request
                             if Self::is_websocket_upgrade(&request) {
@@ -491,6 +521,19 @@ impl ControlPlaneServer {
     fn is_websocket_upgrade(request: &str) -> bool {
         let lower = request.to_lowercase();
         lower.contains("upgrade: websocket") && lower.contains("connection: upgrade")
+    }
+
+    /// Extract Content-Length header value from HTTP request
+    fn extract_content_length(request: &str) -> Option<usize> {
+        for line in request.lines() {
+            let lower = line.to_lowercase();
+            if lower.starts_with("content-length:") {
+                return line.split(':')
+                    .nth(1)
+                    .and_then(|v| v.trim().parse().ok());
+            }
+        }
+        None
     }
 
     /// Handle WebSocket connection for VXLAN tunnel emulation
