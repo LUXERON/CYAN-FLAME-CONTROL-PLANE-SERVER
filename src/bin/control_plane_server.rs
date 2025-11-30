@@ -82,7 +82,13 @@ pub enum ControlCommand {
 
     // GFEF (Galois Field Eigenmode Folding) Operations
     /// Predict which neurons will activate for a given input
-    PredictActivation { layer_id: u32, input_hash: String },
+    #[serde(rename = "PredictActivation")]
+    PredictActivation {
+        customer_id: String,
+        model_id: String,
+        layer_index: u32,
+        input_hash: String
+    },
     /// Upload GFEF index for a model
     UploadGfefIndex { model_id: String, index_data: String },
     /// Get GFEF index status
@@ -1136,9 +1142,10 @@ impl ControlPlaneServer {
             }
 
             // GFEF (Galois Field Eigenmode Folding) Operations
-            ControlCommand::PredictActivation { layer_id, input_hash } => {
+            ControlCommand::PredictActivation { customer_id, model_id, layer_index, input_hash } => {
                 // GFEF prediction using Galois Field mathematics
                 // This predicts which 5% of neurons will activate for a given input
+                debug!("GFEF PredictActivation: customer={}, model={}, layer={}", customer_id, model_id, layer_index);
 
                 // Use input hash to deterministically select active neurons
                 // In production, this would use the trained GFEF index
@@ -1153,7 +1160,7 @@ impl ControlPlaneServer {
 
                 // Generate deterministic but pseudo-random active neuron indices
                 // Using Galois Field GF(2^11) for 2048 hidden size
-                let mut state = seed.wrapping_add(layer_id as u64);
+                let mut state = seed.wrapping_add(layer_index as u64);
                 for _ in 0..num_active {
                     // Linear feedback shift register in GF(2^11)
                     state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -1174,14 +1181,17 @@ impl ControlPlaneServer {
 
                 active_neurons.sort();
 
-                (true, format!("GFEF prediction for layer {}", layer_id), Some(serde_json::json!({
-                    "layer_id": layer_id,
+                (true, format!("GFEF prediction for layer {}", layer_index), Some(serde_json::json!({
+                    "layer_id": layer_index,
+                    "layer_index": layer_index,
                     "input_hash": input_hash,
                     "active_neurons": active_neurons,
                     "sparsity": 0.95,
                     "confidence": 0.99,
                     "method": "galois_field_eigenmode_folding",
                     "gf_order": 2048,
+                    "customer_id": customer_id,
+                    "model_id": model_id,
                 })))
             }
 
