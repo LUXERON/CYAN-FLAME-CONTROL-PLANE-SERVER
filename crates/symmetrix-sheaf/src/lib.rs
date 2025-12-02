@@ -247,10 +247,14 @@ impl SheafSpace {
         // H² = ker(d¹) / im(d⁰)
         let h2_basis = self.compute_quotient_space(&ker_d1, &im_d0)?;
         
+        // Compute obstruction classes from the cohomology basis
+        // Obstructions represent elements that prevent global sections from existing
+        let obstructions = self.compute_obstruction_classes(&h2_basis);
+
         let cohomology = CohomologyGroup {
             dimension: h2_basis.len(),
             basis: h2_basis,
-            obstructions: Vec::new(), // TODO: Compute obstruction classes
+            obstructions,
             computed_at: std::time::Instant::now(),
         };
         
@@ -384,26 +388,64 @@ impl SheafSpace {
         Ok(quotient_basis)
     }
     
-    fn allocate_for_node(&self, node_id: u64, 
+    fn allocate_for_node(&self, node_id: u64,
                         request: &HashMap<ResourceType, f64>,
                         _cohomology: &CohomologyGroup) -> SheafResult<HashMap<ResourceType, f64>> {
         let stalks = self.stalks.read().unwrap();
-        
+
         if let Some(stalk) = stalks.get(&node_id) {
             let mut allocation = HashMap::new();
-            
+
             for (resource_type, &requested) in request {
                 let available = stalk.resources.get(resource_type).unwrap_or(&0.0);
                 let already_allocated = stalk.allocated.get(resource_type).unwrap_or(&0.0);
                 let can_allocate = (available - already_allocated).max(0.0);
-                
+
                 allocation.insert(*resource_type, requested.min(can_allocate));
             }
-            
+
             Ok(allocation)
         } else {
             Err(SheafError::AllocationError(format!("Node {} not found", node_id)))
         }
+    }
+
+    /// Compute obstruction classes from cohomology basis
+    /// Obstructions represent elements that prevent global sections from existing
+    fn compute_obstruction_classes(&self, h2_basis: &[DVector<Complex64>]) -> Vec<DVector<Complex64>> {
+        let mut obstructions = Vec::new();
+
+        // For each basis element, compute its obstruction class
+        // An obstruction exists when the cohomology class is non-trivial
+        for basis_element in h2_basis {
+            // Compute the norm of the basis element
+            let norm: f64 = basis_element.iter()
+                .map(|c| c.norm_sqr())
+                .sum::<f64>()
+                .sqrt();
+
+            // If the norm is significant, this represents an obstruction
+            if norm > 1e-10 {
+                // Normalize the obstruction class
+                let normalized = basis_element.map(|c| c / Complex64::new(norm, 0.0));
+                obstructions.push(normalized);
+            }
+        }
+
+        obstructions
+    }
+
+    /// Get the number of active containers (nodes) in the sheaf space
+    pub fn active_containers(&self) -> usize {
+        self.stalks.read().unwrap().len()
+    }
+
+    /// Get the current cohomology dimension
+    pub fn cohomology_dimension(&self) -> usize {
+        let cache = self.cohomology_cache.read().unwrap();
+        cache.get("h2_global")
+            .map(|c| c.dimension)
+            .unwrap_or(0)
     }
 }
 

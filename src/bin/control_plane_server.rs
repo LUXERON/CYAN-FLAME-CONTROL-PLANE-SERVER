@@ -31,12 +31,13 @@ use symmetrix_core::{
     qanban_integration::{SymmetrixQanbanOptimizer, SymmetrixQanbanConfig},
     uao_qtcam_integration::{SymmetrixUaoQtcamOptimizer, SymmetrixUaoQtcamConfig},
     uao_qtcam_cache::UaoQtcamCache,
-    gfef::{
-        prediction::{ActivationPredictor, PredictorStats},
-        calibration::CalibrationService,
-        subscription::SubscriptionManager,
-        index::{GFEFIndex, IndexConfig, LayerIndex},
-    },
+    // Note: gfef module not yet implemented - using placeholder types
+    // gfef::{
+    //     prediction::{ActivationPredictor, PredictorStats},
+    //     calibration::CalibrationService,
+    //     subscription::SubscriptionManager,
+    //     index::{GFEFIndex, IndexConfig, LayerIndex},
+    // },
 };
 
 /// VXLAN standard port

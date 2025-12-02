@@ -64,6 +64,10 @@ crossbeam = "0.8"
 # Cryptography and security
 ring = "0.17"
 rustls = "0.21"
+md5 = "0.7"
+rcgen = { version = "0.12", features = ["pem", "x509-parser"] }
+x509-parser = "0.16"
+der-parser = "9.0"
 
 # System integration
 libc = "0.2"
@@ -72,6 +76,7 @@ nix = "0.27"
 # CLI and utilities
 clap = { version = "4.0", features = ["derive"] }
 num_cpus = "1.16"
+rand = "0.8"
 
 # WebSocket support (for VXLAN over HTTPS on Render)
 tokio-tungstenite = "0.21"
@@ -79,7 +84,7 @@ futures-util = "0.3"
 sha1 = "0.10"
 base64 = "0.21"
 
-# GFEF Control Plane dependencies
+# Control Plane HTTP dependencies
 axum = { version = "0.7", features = ["ws", "multipart"] }
 tower = { version = "0.4", features = ["util", "timeout"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
@@ -91,6 +96,23 @@ flate2 = "1.0"
 bytemuck = { version = "1.14", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "stream"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"], optional = true }
+
+# gRPC dependencies (tonic framework)
+tonic = { version = "0.12", features = ["tls", "tls-roots", "gzip", "zstd"] }
+tonic-reflection = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-stream = "0.3"
+sysinfo = "0.30"
+
+# TUI Dashboard dependencies
+ratatui = "0.26"
+crossterm = "0.27"
+
+[build-dependencies]
+tonic-build = { version = "0.12", features = ["prost"] }
+prost-build = "0.13"
 
 [dev-dependencies]
 criterion = "0.5"
@@ -134,10 +156,23 @@ path = "src/bin/cascade_benchmark.rs"
 [[bin]]
 name = "symmetrix-control-plane"
 path = "src/bin/control_plane_server.rs"
+required-features = ["gfef"]
 
 [[bin]]
-name = "gfef-cli"
-path = "src/bin/gfef_cli.rs"
+name = "cyan-flame-grpc-server"
+path = "src/bin/grpc_server.rs"
+
+[[bin]]
+name = "cyan-flame-unified"
+path = "src/bin/unified_server.rs"
+
+[[bin]]
+name = "cyan-flame-dashboard"
+path = "src/bin/dashboard.rs"
+
+[[bin]]
+name = "cyan-flame-calibration-dashboard"
+path = "src/bin/calibration_dashboard.rs"
 
 [features]
 default = ["sheaf-scheduler", "galois-acceleration", "tensor-folding", "qanban-integration", "qagml-integration", "uao-qtcam-integration"]
@@ -150,3 +185,4 @@ kernel-integration = []
 qanban-integration = []
 qagml-integration = []
 uao-qtcam-integration = []
+gfef = []  # GFEF module (not yet implemented)

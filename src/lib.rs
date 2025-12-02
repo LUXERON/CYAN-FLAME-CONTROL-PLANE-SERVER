@@ -147,33 +147,28 @@ pub use uao_qtcam_cache::{
 };
 
 // ============================================================================
-// GFEF CONTROL PLANE MODULES (Triple IP Lock™ Architecture)
+// CALIBRATION MATRIX (Infrastructure Service)
 // ============================================================================
-// GFEF (Galois Field Eigenmode Folding) enables 19.6× weight reduction
-// Combined with UAO-QTCAM: 19.6× × 1,250× = 24,500× total compression
+// The Calibration Matrix is the core infrastructure component that enables
+// memory amplification. Customers use this matrix to decompress weights.
 //
-// Triple IP Lock™:
-// 1. GFEF Index (spectral signatures) - owned by Control Plane
-// 2. Calibration Matrix (UAO-QTCAM secret) - rotates every 60 seconds
-// 3. Activation Prediction Service (real-time oracle)
+// This is INFRASTRUCTURE - not inference. We provide the matrix, customers
+// implement their own weight decompression using it.
 
-pub mod gfef;
+// ============================================================================
+// gRPC CONTROL PLANE (Network Management)
+// ============================================================================
+// gRPC-based control plane for CYAN FLAME Virtual GPU Network.
+// Provides calibration matrix distribution, telemetry, allocation, and operations.
 
-pub use gfef::{
-    create_gfef_router,
-    GFEFAppState,
-    CalibrationService,
-    CalibrationMatrix,
-    GFEFIndexGenerator,
-    IndexConfig,
-    IndexMetadata,
-    ActivationPredictor,
-    PredictionRequest,
-    PredictionResponse,
-    IndexStorage,
-    SubscriptionManager,
-    SubscriptionTier,
-    Subscription,
+pub mod grpc;
+pub use grpc::{
+    GrpcServerConfig,
+    server::CyanFlameGrpcServer,
+    calibration::CalibrationServiceImpl,
+    telemetry::TelemetryServiceImpl,
+    allocation::AllocationServiceImpl,
+    operations::OperationsServiceImpl,
 };
 
 // Re-export core types and traits
@@ -262,6 +257,15 @@ pub struct SymmetrixRuntime {
     pub tensor_engine: tensor::TensorFolder,
 }
 
+/// Runtime statistics for monitoring and metrics
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeStats {
+    pub containers_active: usize,
+    pub cache_hit_rate: f64,
+    pub math_ops_per_second: u64,
+    pub cohomology_dimension: usize,
+}
+
 impl SymmetrixRuntime {
     pub fn new(
         sheaf_engine: sheaf::SheafSpace,
@@ -275,6 +279,16 @@ impl SymmetrixRuntime {
             galois_engine,
             tensor_engine,
         })
+    }
+
+    /// Get current runtime statistics
+    pub fn get_stats(&self) -> RuntimeStats {
+        RuntimeStats {
+            containers_active: self.sheaf_engine.active_containers(),
+            cache_hit_rate: self.tensor_engine.cache_hit_rate(),
+            math_ops_per_second: self.galois_engine.ops_per_second(),
+            cohomology_dimension: self.sheaf_engine.cohomology_dimension(),
+        }
     }
 }
 

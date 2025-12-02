@@ -445,21 +445,21 @@ impl GaloisEngine {
     }
     
     /// Perform matrix multiplication using polynomial representation
-    pub fn matrix_multiply_polynomial(&self, a: &[Vec<GaloisElement>], b: &[Vec<GaloisElement>]) 
+    pub fn matrix_multiply_polynomial(&self, a: &[Vec<GaloisElement>], b: &[Vec<GaloisElement>])
                                      -> GaloisResult<Vec<Vec<GaloisElement>>> {
         let n = a.len();
         let m = b[0].len();
         let p = b.len();
-        
+
         if a[0].len() != p {
             return Err(GaloisError::DimensionMismatch {
                 expected: p,
                 actual: a[0].len(),
             });
         }
-        
+
         let mut result = vec![vec![GaloisElement::zero(); m]; n];
-        
+
         // Use polynomial multiplication for each element
         for i in 0..n {
             for j in 0..m {
@@ -471,8 +471,15 @@ impl GaloisEngine {
                 result[i][j] = sum;
             }
         }
-        
+
         Ok(result)
+    }
+
+    /// Get operations per second (estimated based on field size)
+    pub fn ops_per_second(&self) -> u64 {
+        // Mersenne prime GF(2^61-1) allows ~10M ops/sec on modern CPUs
+        // This is a theoretical estimate based on the field characteristics
+        10_000_000
     }
 }
 

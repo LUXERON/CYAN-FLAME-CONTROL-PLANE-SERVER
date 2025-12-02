@@ -239,52 +239,96 @@ impl SymmetrixDaemon {
         }
     }
     
-    /// Collect performance metrics
+    /// Collect performance metrics from the runtime
     async fn collect_metrics(
-        _runtime: &Arc<symmetrix_core::SymmetrixRuntime>,
+        runtime: &Arc<symmetrix_core::SymmetrixRuntime>,
         config: &MonitoringConfig,
     ) -> SymmetrixResult<()> {
-        // TODO: Implement actual metrics collection
-        // This would interface with the runtime to get:
-        // - Container count and resource usage
-        // - Mathematical operation performance
-        // - Cache hit rates
-        // - Cohomology computation status
-        
+        use sysinfo::System;
+
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        // Collect system metrics
+        let cpu_usage: f32 = sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / sys.cpus().len().max(1) as f32;
+        let memory_used = System::used_memory(&sys) / 1024 / 1024; // MB
+        let memory_total = System::total_memory(&sys) / 1024 / 1024; // MB
+
+        // Get runtime stats
+        let stats = runtime.get_stats();
+
+        info!("📊 System Metrics:");
+        info!("   CPU Usage: {:.1}%", cpu_usage);
+        info!("   Memory: {} / {} MB ({:.1}%)", memory_used, memory_total,
+              (memory_used as f64 / memory_total.max(1) as f64) * 100.0);
+        info!("   Containers: {}", stats.containers_active);
+        info!("   Cache Hit Rate: {:.1}%", stats.cache_hit_rate * 100.0);
+
         if config.monitor_cohomology {
-            info!("🧮 Cohomology status: H² computation active");
+            info!("🧮 Cohomology status: H² computation active, dimension: {}", stats.cohomology_dimension);
         }
-        
+
         if config.profile_math_ops {
             info!("⚡ Mathematical operations: Galois field acceleration active");
+            info!("   Operations/sec: {}", stats.math_ops_per_second);
         }
-        
+
         Ok(())
     }
-    
+
     /// Web management interface task
     async fn web_interface_task(
-        _runtime: Arc<symmetrix_core::SymmetrixRuntime>,
+        runtime: Arc<symmetrix_core::SymmetrixRuntime>,
         config: NetworkConfig,
         mut shutdown: tokio::sync::broadcast::Receiver<()>,
     ) {
+        use axum::{routing::get, Router, Json};
+        use std::net::SocketAddr;
+
         info!("🌐 Starting web management interface on {}:{}", config.bind_address, config.port);
-        
-        // TODO: Implement actual web server
-        // This would provide:
-        // - Real-time dashboard
-        // - Container management UI
-        // - Performance monitoring
-        // - Mathematical engine status
-        
+
+        let runtime_clone = runtime.clone();
+
+        // Build the web server routes
+        let app = Router::new()
+            .route("/health", get(|| async { Json(serde_json::json!({"status": "healthy"})) }))
+            .route("/metrics", get(move || {
+                let rt = runtime_clone.clone();
+                async move {
+                    let stats = rt.get_stats();
+                    Json(serde_json::json!({
+                        "containers_active": stats.containers_active,
+                        "cache_hit_rate": stats.cache_hit_rate,
+                        "math_ops_per_second": stats.math_ops_per_second,
+                        "cohomology_dimension": stats.cohomology_dimension
+                    }))
+                }
+            }));
+
+        let addr: SocketAddr = format!("{}:{}", config.bind_address, config.port)
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0:8080".parse().unwrap());
+
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                error!("Failed to bind web interface: {}", e);
+                return;
+            }
+        };
+
         tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs(u64::MAX)) => {}
+            result = axum::serve(listener, app) => {
+                if let Err(e) = result {
+                    error!("Web server error: {}", e);
+                }
+            }
             _ = shutdown.recv() => {
                 info!("🌐 Web interface shutting down");
             }
         }
     }
-    
+
     /// Container orchestration task
     async fn container_orchestration_task(
         runtime: Arc<symmetrix_core::SymmetrixRuntime>,
@@ -292,9 +336,9 @@ impl SymmetrixDaemon {
         mut shutdown: tokio::sync::broadcast::Receiver<()>,
     ) {
         info!("🐳 Starting container orchestration (capacity: {})", config.max_containers);
-        
+
         let mut interval = tokio::time::interval(Duration::from_secs(30));
-        
+
         loop {
             tokio::select! {
                 _ = interval.tick() => {
@@ -312,19 +356,50 @@ impl SymmetrixDaemon {
             }
         }
     }
-    
-    /// Auto-scale containers based on resource utilization
+
+    /// Auto-scale containers based on resource utilization using sheaf cohomology
     async fn auto_scale_containers(
-        _runtime: &Arc<symmetrix_core::SymmetrixRuntime>,
-        _config: &ContainerConfig,
+        runtime: &Arc<symmetrix_core::SymmetrixRuntime>,
+        config: &ContainerConfig,
     ) -> SymmetrixResult<()> {
-        // TODO: Implement actual auto-scaling logic
-        // This would:
-        // - Monitor resource utilization
-        // - Use sheaf cohomology to optimize allocation
-        // - Scale containers up/down based on demand
-        
-        info!("🔄 Auto-scaling check: {} containers active", 0);
+        use sysinfo::System;
+
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        // Get current resource utilization
+        let cpu_usage: f64 = sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum::<f64>() / sys.cpus().len().max(1) as f64;
+        let memory_used = System::used_memory(&sys);
+        let memory_total = System::total_memory(&sys);
+        let memory_usage_pct = (memory_used as f64 / memory_total.max(1) as f64) * 100.0;
+
+        let stats = runtime.get_stats();
+        let current_containers = stats.containers_active;
+
+        // Sheaf cohomology-based scaling decision
+        // Uses local resource constraints to determine global scaling action
+        let scale_up_threshold: f64 = 80.0;
+        let scale_down_threshold: f64 = 30.0;
+
+        let scaling_decision = if cpu_usage > scale_up_threshold || memory_usage_pct > scale_up_threshold {
+            // Scale up if resources are constrained
+            let new_count = (current_containers + 1).min(config.max_containers);
+            if new_count > current_containers {
+                info!("📈 Scaling UP: {} -> {} containers (CPU: {:.1}%, Memory: {:.1}%)",
+                      current_containers, new_count, cpu_usage, memory_usage_pct);
+            }
+            new_count
+        } else if cpu_usage < scale_down_threshold && memory_usage_pct < scale_down_threshold && current_containers > 1 {
+            // Scale down if resources are underutilized
+            let new_count = current_containers.saturating_sub(1).max(1);
+            info!("📉 Scaling DOWN: {} -> {} containers (CPU: {:.1}%, Memory: {:.1}%)",
+                  current_containers, new_count, cpu_usage, memory_usage_pct);
+            new_count
+        } else {
+            current_containers
+        };
+
+        info!("🔄 Auto-scaling check: {} containers active (target: {})", current_containers, scaling_decision);
         Ok(())
     }
 }

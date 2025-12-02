@@ -1,0 +1,1115 @@
+// CYAN FLAME™ gRPC Service Definitions
+// SYMMETRIX CORE™ Virtual GPU Network
+//
+// This protocol defines the communication layer between:
+// - CYAN FLAME SDK Agents (running on GPU nodes)
+// - CYAN FLAME Control Plane Server (central orchestrator)
+//
+// Architecture follows gNMI/gNOI patterns for network management
+
+syntax = "proto3";
+
+package cyan_flame.v1;
+
+option java_multiple_files = true;
+option java_package = "com.symmetrixcore.cyanflame.v1";
+option go_package = "github.com/symmetrix-core/cyan-flame/proto/v1";
+
+// ============================================================================
+// CALIBRATION SERVICE (Like gNMI Configuration) - MEMORY AMPLIFICATION
+// ============================================================================
+// Distributes the 64x64 Chern-Simons modulated eigenmode basis matrix
+// to SDK agents for weight decompression. Matrix rotates every 60 seconds.
+
+service CalibrationService {
+    // Subscribe to calibration matrix updates (streaming - rotates every 60s)
+    rpc SubscribeCalibrationMatrix(CalibrationSubscriptionRequest)
+        returns (stream CalibrationMatrixUpdate);
+
+    // Get current calibration matrix (one-shot for initial sync)
+    rpc GetCalibrationMatrix(GetCalibrationMatrixRequest)
+        returns (CalibrationMatrix);
+
+    // Validate agent's current matrix version
+    rpc ValidateMatrixVersion(MatrixVersionRequest)
+        returns (MatrixVersionResponse);
+}
+
+// ============================================================================
+// COMPUTE CALIBRATION SERVICE - TFLOPS AMPLIFICATION (29.86×)
+// ============================================================================
+// Distributes GPU-specific compute amplification parameters using:
+// - CARTF (Cache-Aware Recursive Tensor Folding) coefficients
+// - GFCE (Galois Field GF(2^32) Compute Engine) lookup tables
+// - DBCG (De Bruijn Compute Graph) Eulerian path weights
+// - CHN-CS (Continuous Hopfield Network) energy matrices
+// - PMCW (Particle Mesh Compute Wave) FFT distribution coefficients
+
+service ComputeCalibrationService {
+    // Subscribe to compute calibration updates (streaming - rotates every 60s)
+    rpc SubscribeComputeCalibration(ComputeCalibrationRequest)
+        returns (stream ComputeCalibrationUpdate);
+
+    // Get current compute calibration (one-shot)
+    rpc GetComputeCalibration(GetComputeCalibrationRequest)
+        returns (ComputeCalibrationMatrix);
+
+    // Get GPU-specific engine configuration
+    rpc GetEngineConfig(EngineConfigRequest)
+        returns (EngineConfigResponse);
+}
+
+// ============================================================================
+// PCIE AMPLIFICATION SERVICE - BANDWIDTH AMPLIFICATION (82×)
+// ============================================================================
+// Amplifies PCIe bandwidth using predictive prefetching, batched coalescing,
+// and compression to overcome CPU↔GPU data transfer bottlenecks.
+
+service PCIeAmplificationService {
+    // Subscribe to PCIe amplification parameters
+    rpc SubscribePCIeCalibration(PCIeCalibrationRequest)
+        returns (stream PCIeCalibrationUpdate);
+
+    // Get current PCIe configuration
+    rpc GetPCIeConfig(GetPCIeConfigRequest)
+        returns (PCIeCalibrationMatrix);
+
+    // Report PCIe bandwidth metrics for adaptive optimization
+    rpc ReportPCIeMetrics(stream PCIeMetricsReport)
+        returns (stream PCIeOptimizationHint);
+}
+
+// ============================================================================
+// TELEMETRY SERVICE (Like gNMI Telemetry)
+// ============================================================================
+// Collects real-time GPU memory status from all SDK agents.
+// Enables network-wide capacity monitoring and optimization.
+
+service TelemetryService {
+    // Stream GPU memory status from agent to control plane
+    rpc StreamMemoryStatus(stream MemoryStatusUpdate)
+        returns (stream TelemetryAck);
+
+    // Subscribe to network-wide GPU capacity updates
+    rpc SubscribeNetworkCapacity(NetworkCapacityRequest)
+        returns (stream NetworkCapacityUpdate);
+
+    // Report agent health metrics
+    rpc ReportHealth(stream HealthMetrics)
+        returns (stream HealthAck);
+}
+
+// ============================================================================
+// ALLOCATION SERVICE (Like gRIBI - Routing Injection)
+// ============================================================================
+// Manages memory allocation across the virtual GPU network.
+// Routes memory requests to optimal GPU nodes.
+
+service AllocationService {
+    // Allocate effective memory on the network
+    rpc AllocateMemory(AllocationRequest)
+        returns (AllocationResponse);
+
+    // Free previously allocated memory
+    rpc FreeMemory(FreeMemoryRequest)
+        returns (FreeMemoryResponse);
+
+    // Route memory request to optimal node (load balancing)
+    rpc RouteMemoryRequest(MemoryRoutingRequest)
+        returns (MemoryRoutingResponse);
+
+    // Get current allocation status
+    rpc GetAllocationStatus(AllocationStatusRequest)
+        returns (AllocationStatusResponse);
+}
+
+// ============================================================================
+// OPERATIONS SERVICE (Like gNOI)
+// ============================================================================
+// Operational commands for SDK agent management.
+
+service OperationsService {
+    // Health check (unary)
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+    // Upgrade SDK agent remotely (streaming progress)
+    rpc UpgradeAgent(UpgradeRequest) returns (stream UpgradeProgress);
+
+    // Get agent system info
+    rpc GetSystemInfo(SystemInfoRequest) returns (SystemInfoResponse);
+
+    // Restart agent service
+    rpc RestartAgent(RestartRequest) returns (RestartResponse);
+}
+
+// ============================================================================
+// MESSAGE DEFINITIONS - CALIBRATION
+// ============================================================================
+
+message CalibrationSubscriptionRequest {
+    string agent_id = 1;
+    string subscription_tier = 2;  // "starter", "professional", "enterprise"
+    string api_key = 3;
+}
+
+message CalibrationMatrixUpdate {
+    CalibrationMatrix matrix = 1;
+    uint64 version = 2;
+    int64 timestamp_ms = 3;
+    int64 next_rotation_ms = 4;  // When the next matrix rotation occurs
+}
+
+message GetCalibrationMatrixRequest {
+    string agent_id = 1;
+    string subscription_tier = 2;
+    string api_key = 3;
+}
+
+message CalibrationMatrix {
+    uint32 rows = 1;           // 64
+    uint32 cols = 2;           // 64
+    bytes matrix_data = 3;     // Compact binary representation (64x64 f64 = 32KB)
+    string matrix_hash = 4;    // SHA-256 hash for verification
+    uint64 version = 5;
+    int64 generated_at_ms = 6;
+    int64 expires_at_ms = 7;
+    AmplificationFactors amplification = 8;
+}
+
+message AmplificationFactors {
+    double memory_amplification = 1;      // 24,500×
+    double compression_ratio = 2;         // 19.6×
+    double effective_multiplier = 3;      // Combined factor
+}
+
+message MatrixVersionRequest {
+    string agent_id = 1;
+    uint64 current_version = 2;
+    string matrix_hash = 3;
+}
+
+message MatrixVersionResponse {
+    bool is_valid = 1;
+    bool needs_update = 2;
+    uint64 latest_version = 3;
+}
+
+// ============================================================================
+// MESSAGE DEFINITIONS - COMPUTE CALIBRATION (TFLOPS AMPLIFICATION)
+// ============================================================================
+
+message ComputeCalibrationRequest {
+    string agent_id = 1;
+    string api_key = 2;
+    string physical_gpu_type = 3;        // Detected physical GPU
+    string target_gpu_type = 4;          // Target GPU to emulate
+}
+
+message ComputeCalibrationUpdate {
+    ComputeCalibrationMatrix matrix = 1;
+    uint64 version = 2;
+    int64 timestamp_ms = 3;
+    int64 next_rotation_ms = 4;
+}
+
+message GetComputeCalibrationRequest {
+    string agent_id = 1;
+    string api_key = 2;
+    string physical_gpu_type = 3;
+}
+
+message ComputeCalibrationMatrix {
+    uint64 version = 1;
+    int64 generated_at_ms = 2;
+    int64 expires_at_ms = 3;
+    string matrix_hash = 4;
+
+    // CARTF (Cache-Aware Recursive Tensor Folding) parameters
+    CartfCoefficients cartf = 5;
+
+    // GFCE (Galois Field Compute Engine) lookup tables
+    GaloisFieldConfig gfce = 6;
+
+    // DBCG (De Bruijn Compute Graph) weights
+    DeBruijnConfig dbcg = 7;
+
+    // CHN-CS (Continuous Hopfield Network Scheduler) energy matrix
+    HopfieldConfig hopfield = 8;
+
+    // PMCW (Particle Mesh Compute Wave) FFT coefficients
+    PmeComputeWaveConfig pmcw = 9;
+
+    // Combined amplification factor
+    ComputeAmplificationFactors amplification = 10;
+}
+
+// CARTF: Cache-Aware Recursive Tensor Folding (1.8×)
+message CartfCoefficients {
+    uint32 block_size_l1 = 1;            // L1 cache block size
+    uint32 block_size_l2 = 2;            // L2 cache block size
+    uint32 block_size_l3 = 3;            // L3 cache block size
+    uint32 recursion_depth = 4;          // Folding recursion depth
+    bytes folding_coefficients = 5;      // 32x32 folding matrix (8KB)
+    double theoretical_factor = 6;       // 1.8×
+}
+
+// GFCE: Galois Field GF(2^32) Compute Engine (14×)
+message GaloisFieldConfig {
+    uint64 irreducible_polynomial = 1;   // x^32 + x^7 + x^3 + x^2 + 1 = 0x18D
+    bytes multiplication_lut = 2;        // Precomputed multiplication table
+    bytes inverse_lut = 3;               // Multiplicative inverse table
+    bytes log_table = 4;                 // Discrete log table
+    bytes antilog_table = 5;             // Anti-log table
+    double theoretical_factor = 6;       // 14.0×
+}
+
+// DBCG: De Bruijn Compute Graph (2.19×)
+message DeBruijnConfig {
+    uint32 graph_order = 1;              // De Bruijn graph order (k)
+    uint32 alphabet_size = 2;            // Alphabet size (n)
+    bytes eulerian_weights = 3;          // Eulerian path edge weights
+    bytes adjacency_matrix = 4;          // Compact adjacency representation
+    double theoretical_factor = 5;       // 2.19×
+}
+
+// CHN-CS: Continuous Hopfield Network Scheduler (1.45×)
+message HopfieldConfig {
+    uint32 neuron_count = 1;             // Number of neurons
+    bytes energy_matrix = 2;             // Symmetric weight matrix W
+    bytes bias_vector = 3;               // Bias vector b
+    double temperature = 4;              // Temperature for annealing
+    double convergence_threshold = 5;    // Energy convergence threshold
+    double theoretical_factor = 6;       // 1.45×
+}
+
+// PMCW: Particle Mesh Compute Wave (1.45×)
+message PmeComputeWaveConfig {
+    uint32 grid_size = 1;                // PME grid size (N³)
+    uint32 spline_order = 2;             // B-spline interpolation order
+    bytes charge_spreading_coeffs = 3;   // Charge spreading coefficients
+    bytes fft_twiddle_factors = 4;       // Precomputed twiddle factors
+    double ewald_coefficient = 5;        // Ewald splitting parameter (β)
+    double theoretical_factor = 6;       // 1.45×
+}
+
+message ComputeAmplificationFactors {
+    double cartf_factor = 1;             // CARTF contribution (1.8×)
+    double gfce_factor = 2;              // Galois Field contribution (14×)
+    double dbcg_factor = 3;              // De Bruijn contribution (2.19×)
+    double hopfield_factor = 4;          // Hopfield contribution (1.45×)
+    double pmcw_factor = 5;              // PME contribution (1.45×)
+    double theoretical_combined = 6;     // Theoretical max (116.20×)
+    double practical_combined = 7;       // Practical with overhead (29.86×)
+    double overhead_percent = 8;         // Orchestration overhead (25.7%)
+}
+
+message EngineConfigRequest {
+    string agent_id = 1;
+    string api_key = 2;
+    string physical_gpu_type = 3;
+    repeated string enabled_engines = 4; // ["cartf", "gfce", "dbcg", "hopfield", "pmcw"]
+}
+
+message EngineConfigResponse {
+    bool success = 1;
+    string error_message = 2;
+    map<string, double> engine_factors = 3;     // Engine name → amplification factor
+    map<string, bool> engine_enabled = 4;       // Engine name → enabled status
+    double combined_factor = 5;                  // Combined practical factor
+}
+
+// ============================================================================
+// MESSAGE DEFINITIONS - PCIE AMPLIFICATION (82×)
+// ============================================================================
+
+message PCIeCalibrationRequest {
+    string agent_id = 1;
+    string api_key = 2;
+    string pcie_generation = 3;          // "gen3", "gen4", "gen5"
+    uint32 pcie_lanes = 4;               // 4, 8, 16
+    uint64 current_bandwidth_gbs = 5;    // Detected bandwidth in GB/s
+}
+
+message PCIeCalibrationUpdate {
+    PCIeCalibrationMatrix matrix = 1;
+    uint64 version = 2;
+    int64 timestamp_ms = 3;
+    int64 next_rotation_ms = 4;
+}
+
+message GetPCIeConfigRequest {
+    string agent_id = 1;
+    string api_key = 2;
+}
+
+message PCIeCalibrationMatrix {
+    uint64 version = 1;
+    int64 generated_at_ms = 2;
+    int64 expires_at_ms = 3;
+    string matrix_hash = 4;
+
+    // Predictive prefetch parameters (Hopfield-based)
+    PrefetchConfig prefetch = 5;
+
+    // Transfer coalescing parameters (De Bruijn-based)
+    CoalescingConfig coalescing = 6;
+
+    // Compression parameters (Galois Field-based)
+    PCIeCompressionConfig compression = 7;
+
+    // Amplification factors
+    PCIeAmplificationFactors amplification = 8;
+}
+
+message PrefetchConfig {
+    uint32 prefetch_depth = 1;           // How many transfers to prefetch
+    uint32 prefetch_stride = 2;          // Stride pattern for sequential access
+    bytes prediction_weights = 3;        // Hopfield energy weights for prediction
+    double hit_rate_target = 4;          // Target prefetch hit rate (95%)
+}
+
+message CoalescingConfig {
+    uint32 min_batch_size = 1;           // Minimum transfers to batch
+    uint32 max_batch_size = 2;           // Maximum batch size
+    uint32 timeout_us = 3;               // Coalescing timeout in microseconds
+    bytes debruijn_schedule = 4;         // De Bruijn optimal scheduling
+}
+
+message PCIeCompressionConfig {
+    bool enable_compression = 1;
+    uint32 compression_level = 2;        // 0-9
+    bytes galois_lut = 3;                // Galois field compression LUT
+    double compression_ratio = 4;        // Expected compression ratio
+}
+
+message PCIeAmplificationFactors {
+    double prefetch_factor = 1;          // Prefetch hit rate improvement
+    double coalescing_factor = 2;        // Batch coalescing improvement
+    double compression_factor = 3;       // Compression improvement
+    double combined_factor = 4;          // Total PCIe amplification (82×)
+    double physical_bandwidth_gbs = 5;   // Physical PCIe bandwidth
+    double effective_bandwidth_gbs = 6;  // Effective bandwidth after amplification
+}
+
+message PCIeMetricsReport {
+    string agent_id = 1;
+    int64 timestamp_ms = 2;
+    uint64 bytes_transferred = 3;
+    uint64 transfers_count = 4;
+    double avg_latency_us = 5;
+    double prefetch_hit_rate = 6;
+    double coalescing_efficiency = 7;
+    double compression_ratio_achieved = 8;
+}
+
+message PCIeOptimizationHint {
+    int64 timestamp_ms = 1;
+    string optimization_type = 2;        // "prefetch", "coalescing", "compression"
+    string hint_message = 3;
+    map<string, double> suggested_params = 4;
+}
+
+// ============================================================================
+// MESSAGE DEFINITIONS - TELEMETRY
+// ============================================================================
+
+message MemoryStatusUpdate {
+    string agent_id = 1;
+    int64 timestamp_ms = 2;
+    GpuMemoryStatus gpu_status = 3;
+    EffectiveMemoryStatus effective_status = 4;
+}
+
+message GpuMemoryStatus {
+    string gpu_name = 1;
+    uint64 total_mb = 2;
+    uint64 used_mb = 3;
+    uint64 free_mb = 4;
+    float utilization_percent = 5;
+    float temperature_celsius = 6;
+}
+
+message EffectiveMemoryStatus {
+    uint64 total_tb = 1;
+    uint64 allocated_tb = 2;
+    uint64 available_tb = 3;
+    double amplification_factor = 4;
+}
+
+message TelemetryAck {
+    bool received = 1;
+    int64 timestamp_ms = 2;
+    string message = 3;
+}
+
+message NetworkCapacityRequest {
+    string agent_id = 1;
+    bool include_all_nodes = 2;
+}
+
+message NetworkCapacityUpdate {
+    int64 timestamp_ms = 1;
+    uint32 total_nodes = 2;
+    uint32 active_nodes = 3;
+    NetworkCapacityMetrics metrics = 4;
+    repeated NodeCapacity nodes = 5;
+}
+
+message NetworkCapacityMetrics {
+    uint64 total_physical_gb = 1;
+    uint64 total_effective_tb = 2;
+    uint64 allocated_effective_tb = 3;
+    uint64 available_effective_tb = 4;
+    double network_utilization_percent = 5;
+}
+
+message NodeCapacity {
+    string node_id = 1;
+    string node_address = 2;
+    uint64 physical_gb = 3;
+    uint64 effective_tb = 4;
+    uint64 allocated_tb = 5;
+    bool is_healthy = 6;
+}
+
+message HealthMetrics {
+    string agent_id = 1;
+    int64 timestamp_ms = 2;
+    float cpu_percent = 3;
+    float memory_percent = 4;
+    float gpu_utilization = 5;
+    uint64 uptime_seconds = 6;
+    uint32 active_connections = 7;
+    uint64 requests_processed = 8;
+}
+
+message HealthAck {
+    bool received = 1;
+    int64 timestamp_ms = 2;
+}
+
+// ============================================================================
+// MESSAGE DEFINITIONS - ALLOCATION
+// ============================================================================
+
+message AllocationRequest {
+    string agent_id = 1;
+    string api_key = 2;
+    uint64 requested_tb = 3;
+    string purpose = 4;  // "model_loading", "inference", "training"
+    int64 duration_ms = 5;  // 0 = indefinite
+}
+
+message AllocationResponse {
+    bool success = 1;
+    string allocation_id = 2;
+    uint64 allocated_tb = 3;
+    string assigned_node = 4;
+    int64 expires_at_ms = 5;
+    string error_message = 6;
+}
+
+message FreeMemoryRequest {
+    string agent_id = 1;
+    string allocation_id = 2;
+}
+
+message FreeMemoryResponse {
+    bool success = 1;
+    uint64 freed_tb = 2;
+    string message = 3;
+}
+
+message MemoryRoutingRequest {
+    string agent_id = 1;
+    uint64 required_tb = 2;
+    string preferred_region = 3;
+    bool low_latency = 4;
+}
+
+message MemoryRoutingResponse {
+    bool found = 1;
+    string optimal_node_id = 2;
+    string node_address = 3;
+    uint64 available_tb = 4;
+    float latency_ms = 5;
+    repeated AlternativeNode alternatives = 6;
+}
+
+message AlternativeNode {
+    string node_id = 1;
+    string address = 2;
+    uint64 available_tb = 3;
+    float latency_ms = 4;
+}
+
+message AllocationStatusRequest {
+    string agent_id = 1;
+    string allocation_id = 2;  // Optional - if empty, returns all allocations
+}
+
+message AllocationStatusResponse {
+    repeated AllocationInfo allocations = 1;
+    uint64 total_allocated_tb = 2;
+    uint64 quota_tb = 3;
+    uint64 remaining_quota_tb = 4;
+}
+
+message AllocationInfo {
+    string allocation_id = 1;
+    uint64 size_tb = 2;
+    string purpose = 3;
+    int64 created_at_ms = 4;
+    int64 expires_at_ms = 5;
+    string node_id = 6;
+}
+
+// ============================================================================
+// MESSAGE DEFINITIONS - OPERATIONS
+// ============================================================================
+
+message HealthCheckRequest {
+    string agent_id = 1;
+}
+
+message HealthCheckResponse {
+    bool healthy = 1;
+    string status = 2;  // "SERVING", "NOT_SERVING", "UNKNOWN"
+    int64 timestamp_ms = 3;
+    map<string, string> details = 4;
+}
+
+message UpgradeRequest {
+    string agent_id = 1;
+    string target_version = 2;
+    string download_url = 3;
+    string checksum = 4;
+    bool force = 5;
+}
+
+message UpgradeProgress {
+    string stage = 1;  // "DOWNLOADING", "VERIFYING", "INSTALLING", "RESTARTING", "COMPLETE"
+    float progress_percent = 2;
+    string message = 3;
+    bool success = 4;
+    string error = 5;
+}
+
+message SystemInfoRequest {
+    string agent_id = 1;
+}
+
+message SystemInfoResponse {
+    string agent_version = 1;
+    string os = 2;
+    string arch = 3;
+    uint32 cpu_cores = 4;
+    uint64 total_memory_gb = 5;
+    GpuInfo gpu = 6;
+    int64 started_at_ms = 7;
+    uint64 uptime_seconds = 8;
+}
+
+message GpuInfo {
+    string name = 1;
+    string driver_version = 2;
+    string cuda_version = 3;
+    uint64 memory_mb = 4;
+    uint32 compute_capability_major = 5;
+    uint32 compute_capability_minor = 6;
+}
+
+// ============================================================================
+// GPU DETECTION & TIERED PRICING SERVICE
+// ============================================================================
+// Detects physical GPU specifications and applies tiered pricing based on
+// baseline GPU type. Supports: V100, H100, H200, RTX 4090, RTX 5090, L40S,
+// AMD MI100, MI250, MI300X
+
+service GpuDetectionService {
+    // Register GPU and get tiered pricing based on detected hardware
+    rpc RegisterGpu(GpuRegistrationRequest) returns (GpuRegistrationResponse);
+
+    // Get current GPU tier configuration
+    rpc GetGpuTierConfig(GpuTierRequest) returns (GpuTierResponse);
+
+    // List all supported GPU tiers
+    rpc ListSupportedGpus(ListSupportedGpusRequest) returns (ListSupportedGpusResponse);
+}
+
+// Supported baseline GPU types for tiered pricing
+enum BaselineGpuType {
+    GPU_UNKNOWN = 0;
+
+    // NVIDIA Data Center GPUs
+    NVIDIA_V100 = 1;           // Volta - Legacy tier (CC 7.0)
+    NVIDIA_A100 = 2;           // Ampere - Workhorse tier (CC 8.0)
+    NVIDIA_H100 = 3;           // Hopper - Target benchmark (CC 9.0)
+    NVIDIA_H200 = 4;           // Enhanced Hopper (CC 9.0)
+    NVIDIA_L40S = 5;           // Ada - Inference Pro tier (CC 8.9)
+    NVIDIA_A10 = 6;            // Ampere - Entry Inference tier (CC 8.6)
+    NVIDIA_A30 = 7;            // Ampere - Mid Inference tier (CC 8.0)
+    NVIDIA_A40 = 8;            // Ampere - Workstation tier (CC 8.6)
+    NVIDIA_TESLA_T4 = 9;       // Turing - Budget Inference tier (CC 7.5)
+
+    // NVIDIA Consumer GPUs - Ada Lovelace
+    NVIDIA_RTX_4090 = 10;      // Ada - Consumer Pro tier (CC 8.9)
+    NVIDIA_RTX_4080 = 11;      // Ada - Consumer tier (CC 8.9)
+    NVIDIA_RTX_4070_TI = 12;   // Ada - Mid-range tier (CC 8.9)
+
+    // NVIDIA Consumer GPUs - Blackwell
+    NVIDIA_RTX_5090 = 13;      // Blackwell - Consumer Premium (CC 10.0)
+    NVIDIA_RTX_5080 = 14;      // Blackwell - Consumer Pro (CC 10.0)
+
+    // NVIDIA Legacy Consumer GPUs - Ampere
+    NVIDIA_RTX_3090 = 15;      // Ampere - Legacy Consumer (CC 8.6)
+    NVIDIA_RTX_3090_TI = 16;   // Ampere - Legacy Consumer Pro (CC 8.6)
+    NVIDIA_RTX_3080 = 17;      // Ampere - Legacy Mid-range (CC 8.6)
+
+    // AMD Instinct Data Center GPUs
+    AMD_MI100 = 20;            // CDNA 1 - AMD Legacy tier
+    AMD_MI250 = 21;            // CDNA 2 - AMD Workhorse tier
+    AMD_MI300X = 22;           // CDNA 3 - AMD Flagship tier
+    AMD_MI325X = 23;           // CDNA 3+ - AMD Ultra tier
+
+    // AMD Consumer GPUs - RDNA 3
+    AMD_RX_7900_XTX = 25;      // RDNA 3 - AMD Consumer Pro
+    AMD_RX_7900_XT = 26;       // RDNA 3 - AMD Consumer
+}
+
+// Target GPU types that can be emulated
+enum TargetGpuType {
+    TARGET_GPU_UNKNOWN = 0;
+    TARGET_H100 = 1;           // NVIDIA H100 80GB HBM3 - Default target
+    TARGET_H200 = 2;           // NVIDIA H200 141GB HBM3e
+    TARGET_MI300X = 3;         // AMD MI300X 192GB HBM3
+    TARGET_A100 = 4;           // NVIDIA A100 80GB HBM2e
+    TARGET_L40S = 5;           // NVIDIA L40S 48GB GDDR6
+    TARGET_CUSTOM = 99;        // Custom target specifications
+}
+
+message GpuRegistrationRequest {
+    string agent_id = 1;
+    string api_key = 2;
+    DetectedGpuInfo detected_gpu = 3;
+
+    // Target GPU to emulate (customer selected)
+    TargetGpuType target_gpu = 4;
+
+    // Custom target specifications (if target_gpu = TARGET_CUSTOM)
+    CustomTargetSpecs custom_target = 5;
+}
+
+// Custom target specifications for advanced users
+message CustomTargetSpecs {
+    uint64 target_vram_gb = 1;              // Target VRAM in GB
+    double target_memory_bandwidth_gbs = 2;  // Target bandwidth in GB/s
+    double target_fp16_tflops = 3;           // Target FP16 TFLOPS
+    double target_fp8_tflops = 4;            // Target FP8 TFLOPS
+    bool require_fp8 = 5;                    // Require FP8 emulation
+    bool require_sparsity = 6;               // Require sparsity support
+}
+
+message DetectedGpuInfo {
+    // GPU identification
+    string name = 1;                        // Full GPU name (e.g., "NVIDIA GeForce RTX 4090")
+    string pci_device_id = 2;               // PCI device ID for exact identification
+    string driver_version = 3;              // GPU driver version
+
+    // Compute capabilities
+    uint32 compute_capability_major = 4;    // Compute capability major version
+    uint32 compute_capability_minor = 5;    // Compute capability minor version
+
+    // Memory specifications
+    uint64 memory_total_mb = 6;             // Total VRAM in MB
+    uint64 memory_bandwidth_gbs = 7;        // Memory bandwidth in GB/s
+
+    // Compute specifications (raw TFLOPS)
+    double fp16_tflops = 8;                 // FP16 Tensor TFLOPS
+    double fp32_tflops = 9;                 // FP32 TFLOPS
+    double tf32_tflops = 10;                // TF32 Tensor TFLOPS (NVIDIA only)
+    double fp8_tflops = 11;                 // FP8 Tensor TFLOPS (Hopper+/Ada+)
+
+    // Architecture info
+    string architecture = 12;               // "Volta", "Ampere", "Hopper", "Ada", "CDNA1", etc.
+    string vendor = 13;                     // "NVIDIA", "AMD"
+    bool supports_fp8 = 14;                 // Native FP8 support
+    bool supports_sparsity = 15;            // Hardware sparsity support
+    bool supports_nvlink = 16;              // NVLink support for multi-GPU
+
+    // ROCm/CUDA info
+    string cuda_version = 17;               // CUDA version (NVIDIA)
+    string rocm_version = 18;               // ROCm version (AMD)
+}
+
+message GpuRegistrationResponse {
+    bool success = 1;
+    string error_message = 2;
+
+    // Detected baseline GPU type (source GPU)
+    BaselineGpuType detected_baseline = 3;
+    string baseline_name = 4;               // Human-readable source GPU name
+
+    // Selected target GPU (what customer wants to emulate)
+    TargetGpuType target_gpu = 5;
+    string target_name = 6;                 // Human-readable target GPU name
+
+    // Tier configuration based on source→target path
+    GpuBasedTierConfig tier_config = 7;
+
+    // Amplification targets to reach selected target
+    AmplificationTargets amplification_targets = 8;
+
+    // Client certificate fingerprint (for mTLS binding)
+    string certificate_binding = 9;
+
+    // Cost estimation for this GPU transformation
+    CostEstimate cost_estimate = 10;
+}
+
+// Cost estimation for GPU amplification
+message CostEstimate {
+    double hourly_rate_usd = 1;             // Estimated hourly cost in USD
+    double daily_rate_usd = 2;              // Estimated daily cost
+    double monthly_rate_usd = 3;            // Estimated monthly cost
+    string pricing_tier = 4;                // "economy", "standard", "premium", "enterprise"
+    double amplification_factor = 5;        // Total amplification (e.g., 3.0×)
+    string cost_breakdown = 6;              // Human-readable breakdown
+}
+
+// GPU-based tier configuration
+message GpuBasedTierConfig {
+    string tier_name = 1;                   // "legacy", "workhorse", "inference_pro", etc.
+
+    // Memory amplification
+    double memory_bandwidth_amplification = 2;   // e.g., 3.7× for V100→H100
+    double effective_memory_multiplier = 3;      // Effective memory capacity multiplier
+
+    // TFLOPS amplification
+    double tflops_amplification_target = 4;      // e.g., 7.9× for V100→H100
+
+    // Pricing factors
+    double pricing_multiplier = 5;               // Base price multiplier for this GPU tier
+    string pricing_tier = 6;                     // "economy", "standard", "premium"
+
+    // Limits
+    uint64 max_effective_memory_tb = 7;          // Maximum effective memory in TB
+    uint32 max_concurrent_sessions = 8;          // Max concurrent sessions
+    uint32 rate_limit_per_minute = 9;            // Rate limit (0 = unlimited)
+
+    // Strategy recommendations
+    repeated string optimization_strategies = 10; // ["aggressive_quantization", "sparsity", etc.]
+}
+
+// Amplification targets to reach H100-equivalent performance
+message AmplificationTargets {
+    // Memory bandwidth amplification needed
+    double memory_bandwidth_multiplier = 1;      // e.g., 3.7× for V100
+    double current_bandwidth_gbs = 2;            // Client's current bandwidth
+    double target_bandwidth_gbs = 3;             // H100 target (3,350 GB/s)
+
+    // TFLOPS amplification needed
+    double tflops_multiplier = 4;                // e.g., 7.9× for V100
+    double current_fp16_tflops = 5;              // Client's current TFLOPS
+    double target_fp16_tflops = 6;               // H100 target (989 TFLOPS)
+
+    // VRAM capacity comparison
+    uint64 current_vram_gb = 7;
+    uint64 target_vram_gb = 8;                   // H100 target (80 GB)
+    double vram_multiplier = 9;
+
+    // Feature gap analysis
+    bool needs_fp8_emulation = 10;               // True if GPU doesn't have native FP8
+    bool needs_sparsity_software = 11;           // True if GPU doesn't have hardware sparsity
+    bool has_nvlink = 12;                        // True if NVLink available
+}
+
+message GpuTierRequest {
+    string agent_id = 1;
+    string api_key = 2;
+}
+
+message GpuTierResponse {
+    BaselineGpuType current_baseline = 1;
+    GpuBasedTierConfig tier_config = 2;
+    AmplificationTargets amplification_targets = 3;
+}
+
+message ListSupportedGpusRequest {
+    string api_key = 1;
+}
+
+message ListSupportedGpusResponse {
+    repeated SupportedGpuInfo supported_gpus = 1;
+}
+
+message SupportedGpuInfo {
+    BaselineGpuType gpu_type = 1;
+    string name = 2;
+    string architecture = 3;
+    string vendor = 4;
+    uint64 vram_gb = 5;
+    double memory_bandwidth_gbs = 6;
+    double fp16_tflops = 7;
+    string pricing_tier = 8;
+    double tflops_amplification_to_h100 = 9;
+    double bandwidth_amplification_to_h100 = 10;
+}
+
+// ============================================================================
+// CERTIFICATE PROVISIONING SERVICE
+// ============================================================================
+// Manages customer certificates for mTLS authentication
+
+service CertificateService {
+    // Request a new client certificate
+    rpc RequestCertificate(CertificateRequest) returns (CertificateResponse);
+
+    // Renew an existing certificate
+    rpc RenewCertificate(RenewCertificateRequest) returns (CertificateResponse);
+
+    // Revoke a certificate
+    rpc RevokeCertificate(RevokeCertificateRequest) returns (RevokeCertificateResponse);
+
+    // Get certificate status
+    rpc GetCertificateStatus(CertificateStatusRequest) returns (CertificateStatusResponse);
+
+    // Get Certificate Revocation List
+    rpc GetCRL(CRLRequest) returns (CRLResponse);
+
+    // OCSP responder
+    rpc CheckCertificateOCSP(OCSPRequest) returns (OCSPResponse);
+}
+
+message CertificateRequest {
+    string api_key = 1;
+    string org_id = 2;
+    string common_name = 3;                 // e.g., "customer-001.cyanflame.local"
+    repeated string dns_names = 4;          // Additional DNS SANs
+    uint32 validity_days = 5;               // Requested validity period
+    string csr_pem = 6;                     // Optional: Customer-provided CSR
+}
+
+message CertificateResponse {
+    bool success = 1;
+    string error_message = 2;
+
+    // Certificate chain
+    string certificate_pem = 3;             // Issued certificate
+    string certificate_chain_pem = 4;       // Full chain (cert + intermediate + root)
+    string private_key_pem = 5;             // Private key (only if CSR not provided)
+
+    // Certificate metadata
+    string serial_number = 6;
+    string fingerprint_sha256 = 7;
+    int64 issued_at_ms = 8;
+    int64 expires_at_ms = 9;
+
+    // Binding info
+    string bound_api_key_hash = 10;         // API key this cert is bound to
+    BaselineGpuType bound_gpu_type = 11;    // GPU type this cert is bound to
+}
+
+message RenewCertificateRequest {
+    string api_key = 1;
+    string old_certificate_pem = 2;         // Current certificate to renew
+    uint32 validity_days = 3;               // New validity period
+}
+
+message RevokeCertificateRequest {
+    string api_key = 1;
+    string certificate_pem = 2;             // Certificate to revoke
+    string serial_number = 3;               // Alternative: revoke by serial
+    RevocationReason reason = 4;
+}
+
+enum RevocationReason {
+    REVOCATION_UNSPECIFIED = 0;
+    REVOCATION_KEY_COMPROMISE = 1;
+    REVOCATION_CA_COMPROMISE = 2;
+    REVOCATION_AFFILIATION_CHANGED = 3;
+    REVOCATION_SUPERSEDED = 4;
+    REVOCATION_CESSATION_OF_OPERATION = 5;
+    REVOCATION_CERTIFICATE_HOLD = 6;
+    REVOCATION_PRIVILEGE_WITHDRAWN = 7;
+}
+
+message RevokeCertificateResponse {
+    bool success = 1;
+    string error_message = 2;
+    string serial_number = 3;
+    int64 revoked_at_ms = 4;
+}
+
+message CertificateStatusRequest {
+    string api_key = 1;
+    string serial_number = 2;               // Check by serial number
+    string fingerprint_sha256 = 3;          // Or by fingerprint
+}
+
+message CertificateStatusResponse {
+    bool found = 1;
+    string serial_number = 2;
+    string status = 3;                      // "valid", "expired", "revoked"
+    int64 issued_at_ms = 4;
+    int64 expires_at_ms = 5;
+    int64 revoked_at_ms = 6;                // 0 if not revoked
+    RevocationReason revocation_reason = 7;
+}
+
+message CRLRequest {
+    string api_key = 1;
+}
+
+message CRLResponse {
+    bytes crl_der = 1;                      // DER-encoded CRL
+    string crl_pem = 2;                     // PEM-encoded CRL
+    int64 this_update_ms = 3;
+    int64 next_update_ms = 4;
+    uint32 revoked_count = 5;
+}
+
+message OCSPRequest {
+    bytes ocsp_request_der = 1;             // DER-encoded OCSP request
+    string serial_number = 2;               // Alternative: check by serial
+}
+
+message OCSPResponse {
+    bytes ocsp_response_der = 1;            // DER-encoded OCSP response
+    string status = 2;                      // "good", "revoked", "unknown"
+    int64 this_update_ms = 3;
+    int64 next_update_ms = 4;
+}
+
+message RestartRequest {
+    string agent_id = 1;
+    bool graceful = 2;
+    int32 delay_seconds = 3;
+}
+
+message RestartResponse {
+    bool accepted = 1;
+    string message = 2;
+    int64 restart_at_ms = 3;
+}
+
+// ============================================================================
+// DASHBOARD METRICS SERVICE
+// ============================================================================
+// Real-time metrics streaming for the CYAN FLAME™ TUI Dashboard.
+
+service DashboardMetricsService {
+    // Stream real-time system metrics
+    rpc StreamDashboardMetrics(DashboardMetricsRequest) returns (stream DashboardMetricsUpdate);
+
+    // Get current connected agents
+    rpc GetConnectedAgents(ConnectedAgentsRequest) returns (ConnectedAgentsResponse);
+
+    // Get system summary snapshot
+    rpc GetSystemSummary(SystemSummaryRequest) returns (SystemSummaryResponse);
+}
+
+message DashboardMetricsRequest {
+    string api_key = 1;
+    uint32 refresh_interval_ms = 2;      // Requested refresh interval
+    bool include_agent_details = 3;       // Include per-agent metrics
+    bool include_network_stats = 4;       // Include network traffic stats
+    bool include_cert_stats = 5;          // Include certificate statistics
+}
+
+message DashboardMetricsUpdate {
+    int64 timestamp_ms = 1;
+
+    // System metrics
+    float cpu_usage_percent = 2;
+    float memory_usage_percent = 3;
+    float memory_total_gb = 4;
+    uint64 uptime_secs = 5;
+
+    // Network metrics
+    uint64 total_connections = 6;
+    uint64 active_connections = 7;
+    uint64 bytes_in = 8;
+    uint64 bytes_out = 9;
+    double requests_per_sec = 10;
+    double avg_latency_ms = 11;
+
+    // Calibration metrics
+    uint64 calibration_requests_total = 12;
+    uint64 gpu_registrations_total = 13;
+
+    // Certificate metrics
+    uint64 certificates_issued = 14;
+    uint64 certificates_active = 15;
+    uint64 certificates_revoked = 16;
+    uint64 certificates_expired = 17;
+
+    // Connected agents summary
+    uint32 total_agents = 18;
+    uint32 agents_by_tier_free = 19;
+    uint32 agents_by_tier_starter = 20;
+    uint32 agents_by_tier_pro = 21;
+    uint32 agents_by_tier_enterprise = 22;
+
+    // Top GPUs connected
+    repeated ConnectedAgentSummary top_agents = 23;
+}
+
+message ConnectedAgentSummary {
+    string agent_id = 1;
+    string gpu_type = 2;
+    string gpu_name = 3;
+    float vram_gb = 4;
+    float tflops = 5;
+    string amplification_tier = 6;
+    string target_gpu = 7;
+    string status = 8;
+    int64 connected_at_ms = 9;
+    double hourly_rate_usd = 10;
+}
+
+message ConnectedAgentsRequest {
+    string api_key = 1;
+    uint32 limit = 2;                    // Max agents to return (default: 100)
+    string filter_tier = 3;              // Filter by tier (optional)
+    string filter_gpu_type = 4;          // Filter by GPU type (optional)
+}
+
+message ConnectedAgentsResponse {
+    bool success = 1;
+    string error_message = 2;
+    uint32 total_count = 3;
+    repeated ConnectedAgentSummary agents = 4;
+}
+
+message SystemSummaryRequest {
+    string api_key = 1;
+}
+
+message SystemSummaryResponse {
+    bool success = 1;
+    string error_message = 2;
+
+    // Server info
+    string server_version = 3;
+    int64 started_at_ms = 4;
+    uint64 uptime_secs = 5;
+
+    // Capacity summary
+    uint32 total_agents_connected = 6;
+    double total_tflops_capacity = 7;
+    double total_vram_capacity_gb = 8;
+    double total_amplified_tflops = 9;
+    double total_amplified_vram_gb = 10;
+
+    // Revenue metrics (for enterprise dashboard)
+    double hourly_revenue_usd = 11;
+    double daily_revenue_estimate_usd = 12;
+    double monthly_revenue_estimate_usd = 13;
+
+    // Health status
+    string cluster_health = 14;           // "healthy", "degraded", "critical"
+    uint32 healthy_nodes = 15;
+    uint32 unhealthy_nodes = 16;
+}
+
