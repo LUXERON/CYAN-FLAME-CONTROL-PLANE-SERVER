@@ -17,21 +17,21 @@
 
 services:
   # ═══════════════════════════════════════════════════════════════════════════
-  # VXLAN CONTROL PLANE SERVER (STATIC BINARY)
+  # CYAN FLAME CONTROL PLANE SERVER (STATIC BINARY)
   # ═══════════════════════════════════════════════════════════════════════════
   - type: web
-    name: vxlan-control-plane
+    name: cyan-flame-control-plane
     runtime: rust
     plan: pro_plus  # $85/month - 4 GB RAM, 2 CPUs
     region: oregon
     branch: main
     # rootDir not needed - files are at repo root
 
-    # Build configuration - standard release build
-    buildCommand: cargo build --release --bin symmetrix-control-plane
+    # Build configuration - Unified Server (HTTP + gRPC)
+    buildCommand: cargo build --release --bin cyan-flame-unified
 
-    # Start command - release binary
-    startCommand: ./target/release/symmetrix-control-plane
+    # Start command - Unified Server binary
+    startCommand: ./target/release/cyan-flame-unified
 
     # Health check endpoint
     healthCheckPath: /health
@@ -163,9 +163,10 @@ services:
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # After deployment:
-# • Health: https://vxlan-control-plane.onrender.com/health
-# • Stats:  https://vxlan-control-plane.onrender.com/stats
-# • VXLAN:  wss://vxlan-control-plane.onrender.com/ws/vxlan
+# • Health: https://cyan-flame-control-plane.onrender.com/health
+# • Stats:  https://cyan-flame-control-plane.onrender.com/stats
+# • VXLAN:  wss://cyan-flame-control-plane.onrender.com/ws/vxlan
+# • gRPC:   grpc://cyan-flame-control-plane.onrender.com:443
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
