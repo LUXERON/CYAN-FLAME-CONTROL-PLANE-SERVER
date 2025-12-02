@@ -27,9 +27,8 @@ services:
     branch: main
     # rootDir not needed - files are at repo root
 
-    # Build configuration - Install protoc first, then build Unified Server
-    buildCommand: |
-      apt-get update && apt-get install -y protobuf-compiler && cargo build --release --bin cyan-flame-unified
+    # Build configuration - Uses pre-generated proto files (no protoc needed)
+    buildCommand: cargo build --release --bin cyan-flame-unified
 
     # Start command - Unified Server binary
     startCommand: ./target/release/cyan-flame-unified
