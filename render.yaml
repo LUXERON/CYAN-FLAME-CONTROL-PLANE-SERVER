@@ -30,8 +30,11 @@ services:
     # Build configuration - Uses pre-generated proto files (no protoc needed)
     buildCommand: cargo build --release --bin cyan-flame-unified
 
-    # Start command - Unified Server binary
-    startCommand: ./target/release/cyan-flame-unified
+    # Start command - Unified Server binary with PRODUCTION SECURITY
+    # --auth: Enable API key authentication (required for all requests)
+    # Note: TLS is handled by Render's edge HTTPS for HTTP port
+    # gRPC clients should use the HTTPS endpoint (Render terminates TLS)
+    startCommand: ./target/release/cyan-flame-unified --auth
 
     # Health check endpoint
     healthCheckPath: /health
@@ -66,6 +69,16 @@ services:
         value: symmetrix=info,control_plane=info,tower_http=info
       - key: RUST_BACKTRACE
         value: "1"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # PRODUCTION API KEYS (sync=false means stored securely in Render)
+      # ═══════════════════════════════════════════════════════════════════════
+      # IMPORTANT: Set these in Render Dashboard > Environment
+      # These are sync=false so they won't be in source control
+      - key: CYAN_FLAME_ENTERPRISE_KEY
+        sync: false  # Set in Render Dashboard for security
+      - key: CYAN_FLAME_PRO_KEY
+        sync: false  # Set in Render Dashboard for security
 
       # Amplification Tiers
       - key: QAGML_TIER
