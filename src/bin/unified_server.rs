@@ -118,18 +118,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     print_banner();
 
+    // Check for Render's PORT environment variable (required for health checks)
+    let http_bind = if let Ok(port) = std::env::var("PORT") {
+        format!("0.0.0.0:{}", port)
+    } else if let Ok(port) = std::env::var("HTTP_PORT") {
+        format!("0.0.0.0:{}", port)
+    } else {
+        args.http_bind.clone()
+    };
+
+    // gRPC can use its own port or share with HTTP on Render
+    let grpc_bind = if let Ok(port) = std::env::var("GRPC_PORT") {
+        format!("0.0.0.0:{}", port)
+    } else {
+        args.grpc_bind.clone()
+    };
+
     let auth_status = if args.auth { "🔐 ENABLED" } else { "🔓 DISABLED" };
     let tls_status = if args.grpc_tls { "🔒 ENABLED" } else { "🔓 DISABLED" };
     let mtls_status = if args.mtls { "🔐 ENABLED (client certs required)" } else { "🔓 DISABLED" };
+    let reflection_status = if args.reflection { "Enabled" } else { "Disabled" };
 
     info!("╔══════════════════════════════════════════════════════════════════╗");
     info!("║           CYAN FLAME™ Unified Control Plane                      ║");
     info!("╠══════════════════════════════════════════════════════════════════╣");
-    info!("║  HTTP API:  {:50} ║", args.http_bind);
-    info!("║  gRPC:      {:50} ║", args.grpc_bind);
-    info!("║  TLS:       {:50} ║", tls_status);
-    info!("║  mTLS:      {:50} ║", mtls_status);
-    info!("║  API Auth:  {:50} ║", auth_status);
+    info!("║  Address:    {:50} ║", http_bind);
+    info!("║  TLS:        {:50} ║", tls_status);
+    info!("║  mTLS:       {:50} ║", mtls_status);
+    info!("║  API Auth:   {:50} ║", auth_status);
+    info!("║  Reflection: {:50} ║", reflection_status);
     info!("╚══════════════════════════════════════════════════════════════════╝");
 
     if args.mtls {
@@ -141,9 +158,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("╚══════════════════════════════════════════════════════════════════╝");
     }
 
-    // Build gRPC configuration
+    // Build gRPC configuration using the resolved bind address
     let grpc_config = GrpcServerConfig {
-        bind_addr: args.grpc_bind.clone(),
+        bind_addr: grpc_bind.clone(),
         enable_tls: args.grpc_tls,
         cert_path: args.cert,
         key_path: args.key,
@@ -154,6 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Start gRPC server in background with auth setting
+    info!("🔥 CYAN FLAME gRPC server starting on {}", grpc_bind);
     let grpc_server = CyanFlameGrpcServer::with_config_and_auth(grpc_config, args.auth);
     let grpc_handle = tokio::spawn(async move {
         if let Err(e) = grpc_server.serve().await {
@@ -161,19 +179,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Start HTTP server with auth status
-    let http_addr: SocketAddr = args.http_bind.parse()?;
+    // Start HTTP server with auth status using resolved bind address
+    info!("🌐 HTTP server listening on {}", http_bind);
+    let http_addr: SocketAddr = http_bind.parse()?;
     let auth_enabled = args.auth;
     let http_handle = tokio::spawn(async move {
         run_http_server(http_addr, auth_enabled).await;
     });
-
-    info!("🔥 CYAN FLAME Unified Server running");
-    info!("   HTTP: http://{}", args.http_bind);
-    info!("   gRPC: {}", args.grpc_bind);
-    if args.auth {
-        info!("   Auth: API key required in 'x-api-key' header");
-    }
 
     // Wait for shutdown signal
     tokio::select! {
